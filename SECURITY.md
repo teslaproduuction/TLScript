@@ -1,5 +1,11 @@
 # Security Policy
 
+[🇷🇺 Русский](#русский) | [🇺🇸 English](#english)
+
+---
+
+## Русский
+
 ## Поддерживаемые версии
 
 Мы предоставляем обновления безопасности для следующих версий TLScript:
@@ -83,3 +89,91 @@ crontab -l | grep acme
 ---
 
 Спасибо за помощь в обеспечении безопасности TLScript!
+
+---
+
+## English
+
+## Supported Versions
+
+We provide security updates for the following versions of TLScript:
+
+| Version | Supported          |
+| ------- | ------------------ |
+| 1.0.x   | :white_check_mark: |
+
+## Reporting Vulnerabilities
+
+If you discover a security vulnerability in TLScript, we ask you to report it responsibly.
+
+### How to Report
+
+1. **DO NOT** create a public Issue for security vulnerabilities
+2. Send an email with vulnerability description to: [security@example.com] (replace with real email)
+3. Or create a private Security Advisory on GitHub
+
+### What to Include in Report
+
+- Vulnerability description
+- Steps to reproduce
+- Possible impact
+- Suggested solution (if any)
+- Your contact information
+
+### What to Expect
+
+- Acknowledgment of your report within 48 hours
+- Initial assessment within 7 days
+- Regular updates on progress
+- Notification of fix release
+
+## Security Policy
+
+### TLScript Security Principles
+
+1. **Minimal Privileges**: Script requires root rights only when necessary
+2. **Input Validation**: All user inputs are validated
+3. **Secure Storage**: Certificates are stored in secure `/root/cert/` directory
+4. **Official Sources**: Only official repositories and sources are used
+
+### Security Recommendations
+
+#### For Users:
+
+- Always run script as root
+- Regularly update script to latest version
+- Verify integrity of downloaded file
+- Use strong passwords for Cloudflare API
+- Regularly check certificate renewal logs
+
+#### Script Download:
+```bash
+# Safe download with verification
+curl -L https://github.com/teslaproduuction/TLScript/raw/main/cert_manager.sh -o cert_manager.sh
+# Check content before execution
+less cert_manager.sh
+chmod +x cert_manager.sh
+```
+
+#### Monitoring:
+```bash
+# Regularly check logs
+tail -f /var/log/acme_renewal.log
+
+# Check cron tasks
+crontab -l | grep acme
+```
+
+### Known Limitations
+
+1. Script requires internet connection to download acme.sh
+2. Temporarily opens port 80 for HTTP validation
+3. Saves Cloudflare API keys in environment variables
+
+### Security Updates
+
+Critical security updates will be released as soon as possible. Subscribe to repository notifications for updates.
+
+---
+
+Thank you for helping secure TLScript!
