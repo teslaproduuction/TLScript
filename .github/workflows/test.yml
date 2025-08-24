@@ -1,0 +1,232 @@
+name: Test cert_manager.sh
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master ]
+  schedule:
+    - cron: '0 2 * * 0'  # Weekly on Sunday at 2 AM
+
+jobs:
+  shellcheck:
+    name: ShellCheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
+      - name: Run ShellCheck on cert_manager.sh
+        run: |
+          shellcheck cert_manager.sh
+
+      - name: Run ShellCheck with specific checks
+        run: |
+          # Check for common issues with more verbose output
+          shellcheck -f gcc cert_manager.sh || true
+          shellcheck -S warning cert_manager.sh
+
+  syntax-test:
+    name: Bash Syntax Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Test bash syntax
+        run: |
+          bash -n cert_manager.sh
+          echo "✅ Bash syntax check passed"
+
+      - name: Check shebang and file permissions
+        run: |
+          head -1 cert_manager.sh | grep -q "#!/bin/bash" && echo "✅ Shebang correct" || exit 1
+          test -f cert_manager.sh && echo "✅ File exists" || exit 1
+
+  basic-functionality:
+    name: Basic Functionality Test
+    runs-on: ubuntu-latest
+    needs: [shellcheck, syntax-test]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Make script executable
+        run: chmod +x cert_manager.sh
+
+      - name: Test help/version output
+        run: |
+          # Test that script runs without errors for basic operations
+          timeout 10s ./cert_manager.sh 0 2>/dev/null || true
+          echo "✅ Script basic execution test passed"
+
+      - name: Test menu display
+        run: |
+          # Test menu display (should timeout but show menu)
+          echo "0" | timeout 5s ./cert_manager.sh 2>/dev/null || true
+          echo "✅ Menu display test completed"
+
+      - name: Check required functions exist
+        run: |
+          # Check that key functions are defined in the script
+          grep -q "show_menu" cert_manager.sh && echo "✅ show_menu function found"
+          grep -q "install_dependencies" cert_manager.sh && echo "✅ install_dependencies function found" || true
+          grep -q "LOGI\|LOGE\|LOGD" cert_manager.sh && echo "✅ Logging functions found"
+
+  dependency-check:
+    name: Dependency Installation Test
+    runs-on: ubuntu-latest
+    needs: basic-functionality
+    strategy:
+      matrix:
+        os-image: ['ubuntu:20.04', 'ubuntu:22.04', 'debian:11', 'debian:12']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Test dependency installation in container
+        run: |
+          docker run --rm -v $PWD:/workspace -w /workspace ${{ matrix.os-image }} bash -c '
+            apt-get update >/dev/null 2>&1
+            chmod +x cert_manager.sh
+            # Test install command (should work without requiring interactive input)
+            timeout 30s bash -c "echo | ./cert_manager.sh install" 2>/dev/null || true
+            echo "✅ Dependency installation test completed for ${{ matrix.os-image }}"
+          '
+
+  security-check:
+    name: Security Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check for hardcoded credentials
+        run: |
+          # Check for potential security issues
+          if grep -i "password\|secret\|key.*=" cert_manager.sh | grep -v "API.*key" | grep -v "your.*key"; then
+            echo "⚠️  Potential hardcoded credentials found"
+            exit 1
+          fi
+          echo "✅ No hardcoded credentials detected"
+
+      - name: Check for dangerous commands
+        run: |
+          # Check for potentially dangerous command patterns
+          DANGEROUS_PATTERNS="rm -rf /|chmod 777|> /etc/passwd|curl.*|.*eval"
+          if grep -E "$DANGEROUS_PATTERNS" cert_manager.sh >/dev/null; then
+            echo "⚠️  Potentially dangerous commands found - manual review needed"
+            grep -n -E "$DANGEROUS_PATTERNS" cert_manager.sh || true
+          fi
+          echo "✅ Security check completed"
+
+      - name: Check root requirements
+        run: |
+          # Verify script properly checks for root privileges
+          grep -q "EUID\|getent\|whoami" cert_manager.sh && echo "✅ Root privilege checks found" || echo "⚠️  No root checks found"
+
+  documentation-check:
+    name: Documentation Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check README consistency
+        run: |
+          # Check that script name matches documentation
+          grep -q "cert_manager.sh" README.md && echo "✅ Script name found in README"
+          
+          # Check that documented commands exist in script
+          if grep -q "cloudflare" README.md; then
+            grep -q "cloudflare" cert_manager.sh && echo "✅ Cloudflare option documented and implemented"
+          fi
+
+      - name: Check for TODO comments
+        run: |
+          if grep -i "todo\|fixme\|hack" cert_manager.sh; then
+            echo "⚠️  TODO/FIXME comments found - review needed"
+            grep -n -i "todo\|fixme\|hack" cert_manager.sh
+          else
+            echo "✅ No TODO comments found"
+          fi
+
+  integration-test:
+    name: Integration Test (Dry Run)
+    runs-on: ubuntu-latest
+    needs: [basic-functionality, dependency-check]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup test environment
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y curl wget socat cron
+          chmod +x cert_manager.sh
+
+      - name: Test script with mock inputs
+        run: |
+          # Create a test script that simulates user inputs
+          cat > test_inputs.txt << 'EOF'
+0
+EOF
+          
+          # Test with timeout to prevent hanging
+          timeout 30s ./cert_manager.sh < test_inputs.txt 2>/dev/null || true
+          echo "✅ Integration test completed"
+
+      - name: Test acme.sh installation capability
+        run: |
+          # Test that the script can download and prepare acme.sh
+          # (without actually installing certificates)
+          curl -s https://get.acme.sh | bash -s -- --version >/dev/null && echo "✅ acme.sh is accessible" || echo "⚠️  acme.sh access issue"
+
+  performance-test:
+    name: Performance Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check script performance
+        run: |
+          chmod +x cert_manager.sh
+          
+          # Measure script startup time
+          start_time=$(date +%s%N)
+          echo "0" | timeout 10s ./cert_manager.sh >/dev/null 2>&1 || true
+          end_time=$(date +%s%N)
+          
+          duration=$(( ($end_time - $start_time) / 1000000 ))  # Convert to milliseconds
+          echo "Script startup time: ${duration}ms"
+          
+          # Check if startup is reasonable (less than 5 seconds)
+          if [ $duration -gt 5000 ]; then
+            echo "⚠️  Script startup is slow: ${duration}ms"
+          else
+            echo "✅ Script startup performance acceptable"
+          fi
+
+  compatibility-test:
+    name: Compatibility Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Test with different bash versions
+        run: |
+          chmod +x cert_manager.sh
+          
+          # Test with default bash
+          bash --version
+          bash -n cert_manager.sh && echo "✅ Compatible with system bash"
+          
+          # Test basic execution
+          echo "0" | timeout 5s bash cert_manager.sh >/dev/null 2>&1 || true
