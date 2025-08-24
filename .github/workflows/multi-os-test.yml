@@ -100,6 +100,13 @@ jobs:
             # Update package list and install basic tools
             echo "📦 Installing dependencies..."
             ${{ matrix.package_manager }} update -y -q
+            
+            # Handle curl/curl-minimal conflict in minimal containers
+            if ${{ matrix.package_manager }} list installed | grep -q curl-minimal; then
+              echo "curl-minimal detected, removing before installing full curl..."
+              ${{ matrix.package_manager }} remove -y curl-minimal || true
+            fi
+            
             ${{ matrix.package_manager }} install -y -q curl wget socat cronie procps-ng || \
             ${{ matrix.package_manager }} install -y -q curl wget socat cron procps-ng || {
               echo "⚠️ Some packages failed to install, continuing with available tools..."
