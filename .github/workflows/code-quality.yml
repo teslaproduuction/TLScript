@@ -62,7 +62,13 @@ jobs:
       - name: Check critical ShellCheck errors
         run: |
           # Fail the build if there are error-level issues
-          shellcheck -S error cert_manager.sh
+          echo "🔍 Checking for critical errors..."
+          if ! shellcheck -S error cert_manager.sh; then
+            echo "❌ Critical ShellCheck errors found!"
+            echo "Please fix the errors shown above before proceeding."
+            exit 1
+          fi
+          echo "✅ No critical ShellCheck errors found"
 
       - name: Upload ShellCheck report
         uses: actions/upload-artifact@v4
