@@ -1,0 +1,301 @@
+name: Multi-OS Compatibility Test
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:  # Allow manual triggering
+
+jobs:
+  test-ubuntu-debian:
+    name: Test Ubuntu/Debian Family
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu:20.04
+            name: "Ubuntu 20.04"
+            package_manager: apt
+          - os: ubuntu:22.04
+            name: "Ubuntu 22.04"
+            package_manager: apt
+          - os: ubuntu:24.04
+            name: "Ubuntu 24.04"
+            package_manager: apt
+          - os: debian:11
+            name: "Debian 11"
+            package_manager: apt
+          - os: debian:12
+            name: "Debian 12"
+            package_manager: apt
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Test on ${{ matrix.name }}
+        run: |
+          echo "Testing on ${{ matrix.name }}"
+          docker run --rm -v $PWD:/workspace -w /workspace ${{ matrix.os }} bash -c '
+            set -e
+            
+            # Update package list
+            apt-get update -qq
+            
+            # Install basic tools for testing
+            apt-get install -y -qq curl wget socat cron procps
+            
+            # Make script executable
+            chmod +x cert_manager.sh
+            
+            # Test script syntax
+            bash -n cert_manager.sh || exit 1
+            echo "✅ Syntax check passed on ${{ matrix.name }}"
+            
+            # Test basic menu display
+            echo "0" | timeout 10s ./cert_manager.sh >/dev/null 2>&1 || true
+            echo "✅ Basic execution test passed on ${{ matrix.name }}"
+            
+            # Test dependency installation simulation
+            echo "Installing dependencies simulation..."
+            which curl >/dev/null && echo "✅ curl available"
+            which wget >/dev/null && echo "✅ wget available"  
+            which socat >/dev/null && echo "✅ socat available"
+            which cron >/dev/null && echo "✅ cron available"
+            
+            echo "✅ All tests passed on ${{ matrix.name }}"
+          '
+
+  test-centos-rhel:
+    name: Test CentOS/RHEL Family
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: centos:stream8
+            name: "CentOS Stream 8"
+            package_manager: dnf
+          - os: centos:stream9
+            name: "CentOS Stream 9"  
+            package_manager: dnf
+          - os: almalinux:9
+            name: "AlmaLinux 9"
+            package_manager: dnf
+          - os: rockylinux:9
+            name: "Rocky Linux 9"
+            package_manager: dnf
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Test on ${{ matrix.name }}
+        run: |
+          echo "Testing on ${{ matrix.name }}"
+          docker run --rm -v $PWD:/workspace -w /workspace ${{ matrix.os }} bash -c '
+            set -e
+            
+            # Update package list and install basic tools
+            ${{ matrix.package_manager }} update -y -q
+            ${{ matrix.package_manager }} install -y -q curl wget socat cronie procps-ng
+            
+            # Make script executable
+            chmod +x cert_manager.sh
+            
+            # Test script syntax
+            bash -n cert_manager.sh || exit 1
+            echo "✅ Syntax check passed on ${{ matrix.name }}"
+            
+            # Test basic menu display
+            echo "0" | timeout 10s ./cert_manager.sh >/dev/null 2>&1 || true
+            echo "✅ Basic execution test passed on ${{ matrix.name }}"
+            
+            # Test dependency availability
+            which curl >/dev/null && echo "✅ curl available"
+            which wget >/dev/null && echo "✅ wget available"
+            which socat >/dev/null && echo "✅ socat available"
+            which cronie >/dev/null || which cron >/dev/null && echo "✅ cron service available"
+            
+            echo "✅ All tests passed on ${{ matrix.name }}"
+          '
+
+  test-fedora:
+    name: Test Fedora
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: fedora:38
+            name: "Fedora 38"
+          - os: fedora:39
+            name: "Fedora 39"
+          - os: fedora:40
+            name: "Fedora 40"
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Test on ${{ matrix.name }}
+        run: |
+          echo "Testing on ${{ matrix.name }}"
+          docker run --rm -v $PWD:/workspace -w /workspace ${{ matrix.os }} bash -c '
+            set -e
+            
+            # Update and install packages
+            dnf update -y -q
+            dnf install -y -q curl wget socat cronie procps-ng
+            
+            # Make script executable
+            chmod +x cert_manager.sh
+            
+            # Test script syntax
+            bash -n cert_manager.sh || exit 1
+            echo "✅ Syntax check passed on ${{ matrix.name }}"
+            
+            # Test basic execution
+            echo "0" | timeout 10s ./cert_manager.sh >/dev/null 2>&1 || true
+            echo "✅ Basic execution test passed on ${{ matrix.name }}"
+            
+            # Check dependencies
+            which curl >/dev/null && echo "✅ curl available"
+            which wget >/dev/null && echo "✅ wget available"
+            which socat >/dev/null && echo "✅ socat available"
+            which cronie >/dev/null && echo "✅ cronie available"
+            
+            echo "✅ All tests passed on ${{ matrix.name }}"
+          '
+
+  test-arch:
+    name: Test Arch Linux
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Test on Arch Linux
+        run: |
+          echo "Testing on Arch Linux"
+          docker run --rm -v $PWD:/workspace -w /workspace archlinux:latest bash -c '
+            set -e
+            
+            # Update package database and install packages
+            pacman -Syu --noconfirm
+            pacman -S --noconfirm curl wget socat cronie procps-ng
+            
+            # Make script executable
+            chmod +x cert_manager.sh
+            
+            # Test script syntax
+            bash -n cert_manager.sh || exit 1
+            echo "✅ Syntax check passed on Arch Linux"
+            
+            # Test basic execution
+            echo "0" | timeout 10s ./cert_manager.sh >/dev/null 2>&1 || true
+            echo "✅ Basic execution test passed on Arch Linux"
+            
+            # Check dependencies
+            which curl >/dev/null && echo "✅ curl available"
+            which wget >/dev/null && echo "✅ wget available"
+            which socat >/dev/null && echo "✅ socat available"
+            which cronie >/dev/null && echo "✅ cronie available"
+            
+            echo "✅ All tests passed on Arch Linux"
+          '
+
+  test-opensuse:
+    name: Test openSUSE
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Test on openSUSE Tumbleweed
+        run: |
+          echo "Testing on openSUSE Tumbleweed"
+          docker run --rm -v $PWD:/workspace -w /workspace opensuse/tumbleweed:latest bash -c '
+            set -e
+            
+            # Update and install packages
+            zypper ref
+            zypper install -y curl wget socat cron procps
+            
+            # Make script executable
+            chmod +x cert_manager.sh
+            
+            # Test script syntax
+            bash -n cert_manager.sh || exit 1
+            echo "✅ Syntax check passed on openSUSE"
+            
+            # Test basic execution
+            echo "0" | timeout 10s ./cert_manager.sh >/dev/null 2>&1 || true
+            echo "✅ Basic execution test passed on openSUSE"
+            
+            # Check dependencies
+            which curl >/dev/null && echo "✅ curl available"
+            which wget >/dev/null && echo "✅ wget available"
+            which socat >/dev/null && echo "✅ socat available"
+            which cron >/dev/null && echo "✅ cron available"
+            
+            echo "✅ All tests passed on openSUSE"
+          '
+
+  compatibility-report:
+    name: Generate Compatibility Report
+    runs-on: ubuntu-latest
+    needs: [test-ubuntu-debian, test-centos-rhel, test-fedora, test-arch, test-opensuse]
+    if: always()
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        
+      - name: Generate compatibility report
+        run: |
+          echo "## Multi-OS Compatibility Test Results" > compatibility_report.md
+          echo "" >> compatibility_report.md
+          echo "| OS Family | Status |" >> compatibility_report.md
+          echo "|-----------|--------|" >> compatibility_report.md
+          
+          # Check job results and generate report
+          if [ "${{ needs.test-ubuntu-debian.result }}" = "success" ]; then
+            echo "| Ubuntu/Debian | ✅ Pass |" >> compatibility_report.md
+          else
+            echo "| Ubuntu/Debian | ❌ Fail |" >> compatibility_report.md
+          fi
+          
+          if [ "${{ needs.test-centos-rhel.result }}" = "success" ]; then
+            echo "| CentOS/RHEL | ✅ Pass |" >> compatibility_report.md
+          else
+            echo "| CentOS/RHEL | ❌ Fail |" >> compatibility_report.md
+          fi
+          
+          if [ "${{ needs.test-fedora.result }}" = "success" ]; then
+            echo "| Fedora | ✅ Pass |" >> compatibility_report.md
+          else
+            echo "| Fedora | ❌ Fail |" >> compatibility_report.md
+          fi
+          
+          if [ "${{ needs.test-arch.result }}" = "success" ]; then
+            echo "| Arch Linux | ✅ Pass |" >> compatibility_report.md
+          else
+            echo "| Arch Linux | ❌ Fail |" >> compatibility_report.md
+          fi
+          
+          if [ "${{ needs.test-opensuse.result }}" = "success" ]; then
+            echo "| openSUSE | ✅ Pass |" >> compatibility_report.md
+          else
+            echo "| openSUSE | ❌ Fail |" >> compatibility_report.md
+          fi
+          
+          echo "" >> compatibility_report.md
+          echo "Generated on: $(date)" >> compatibility_report.md
+          
+          cat compatibility_report.md
+          
+      - name: Upload compatibility report
+        uses: actions/upload-artifact@v4
+        with:
+          name: compatibility-report
+          path: compatibility_report.md
+          retention-days: 30

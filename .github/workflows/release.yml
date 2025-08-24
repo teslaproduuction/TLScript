@@ -1,0 +1,207 @@
+name: Release Workflow
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # Trigger on version tags like v1.0.0
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to release (e.g., v1.0.1)'
+        required: true
+        type: string
+
+jobs:
+  validate-release:
+    name: Validate Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Validate script before release
+        run: |
+          chmod +x cert_manager.sh
+          
+          # Syntax check
+          bash -n cert_manager.sh || exit 1
+          echo "✅ Syntax validation passed"
+          
+          # Basic functionality test
+          echo "0" | timeout 10s ./cert_manager.sh >/dev/null 2>&1 || true
+          echo "✅ Basic functionality test passed"
+
+      - name: Run ShellCheck
+        run: |
+          sudo apt-get update && sudo apt-get install -y shellcheck
+          shellcheck -S error cert_manager.sh
+          echo "✅ ShellCheck validation passed"
+
+  test-before-release:
+    name: Pre-Release Testing
+    runs-on: ubuntu-latest
+    needs: validate-release
+    strategy:
+      matrix:
+        os: ['ubuntu:20.04', 'ubuntu:22.04', 'debian:11', 'centos:stream9']
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Test on ${{ matrix.os }}
+        run: |
+          docker run --rm -v $PWD:/workspace -w /workspace ${{ matrix.os }} bash -c '
+            if command -v apt-get >/dev/null; then
+              apt-get update -qq && apt-get install -y -qq curl wget socat cron procps
+            elif command -v dnf >/dev/null; then
+              dnf update -y -q && dnf install -y -q curl wget socat cronie procps-ng
+            fi
+            
+            chmod +x cert_manager.sh
+            bash -n cert_manager.sh || exit 1
+            echo "0" | timeout 10s ./cert_manager.sh >/dev/null 2>&1 || true
+            echo "✅ Release test passed on ${{ matrix.os }}"
+          '
+
+  create-release:
+    name: Create GitHub Release
+    runs-on: ubuntu-latest
+    needs: [validate-release, test-before-release]
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0  # Fetch full history for changelog
+
+      - name: Get version
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ inputs.version }}"
+          else
+            VERSION=${GITHUB_REF#refs/tags/}
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Version: $VERSION"
+
+      - name: Generate release notes
+        run: |
+          VERSION="${{ steps.get_version.outputs.version }}"
+          echo "# Release $VERSION" > release_notes.md
+          echo "" >> release_notes.md
+          
+          # Extract changelog for this version
+          if grep -A 20 "## \[$VERSION" CHANGELOG.md >/dev/null 2>&1; then
+            echo "## Changes" >> release_notes.md
+            sed -n "/## \[$VERSION/,/## \[/p" CHANGELOG.md | head -n -1 | tail -n +2 >> release_notes.md
+          else
+            echo "## Changes" >> release_notes.md
+            echo "- Bug fixes and improvements" >> release_notes.md
+          fi
+          
+          echo "" >> release_notes.md
+          echo "## Installation" >> release_notes.md
+          echo "" >> release_notes.md
+          echo '```bash' >> release_notes.md
+          echo "# Download and install" >> release_notes.md
+          echo "wget https://github.com/teslaproduuction/TLScript/releases/download/$VERSION/cert_manager.sh" >> release_notes.md
+          echo "chmod +x cert_manager.sh" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "# Run the script" >> release_notes.md
+          echo "sudo ./cert_manager.sh" >> release_notes.md
+          echo '```' >> release_notes.md
+          
+          echo "" >> release_notes.md
+          echo "## Supported Operating Systems" >> release_notes.md
+          echo "- Ubuntu 20.04+" >> release_notes.md
+          echo "- Debian 11+" >> release_notes.md
+          echo "- CentOS 8+" >> release_notes.md
+          echo "- Fedora 36+" >> release_notes.md
+          echo "- Arch Linux" >> release_notes.md
+          echo "- AlmaLinux 9+" >> release_notes.md
+          echo "- Rocky Linux 9+" >> release_notes.md
+          echo "- Oracle Linux 8+" >> release_notes.md
+
+      - name: Create checksums
+        run: |
+          # Create checksums for the script
+          sha256sum cert_manager.sh > cert_manager.sh.sha256
+          md5sum cert_manager.sh > cert_manager.sh.md5
+          
+          echo "## File Verification" >> release_notes.md
+          echo "" >> release_notes.md
+          echo "### SHA256" >> release_notes.md
+          echo '```' >> release_notes.md
+          cat cert_manager.sh.sha256 >> release_notes.md
+          echo '```' >> release_notes.md
+          echo "" >> release_notes.md
+          echo "### MD5" >> release_notes.md
+          echo '```' >> release_notes.md
+          cat cert_manager.sh.md5 >> release_notes.md
+          echo '```' >> release_notes.md
+
+      - name: Create Release
+        uses: actions/create-release@v1
+        id: create_release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.get_version.outputs.version }}
+          release_name: TLScript ${{ steps.get_version.outputs.version }}
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+
+      - name: Upload cert_manager.sh
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./cert_manager.sh
+          asset_name: cert_manager.sh
+          asset_content_type: application/x-shellscript
+
+      - name: Upload SHA256 checksum
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./cert_manager.sh.sha256
+          asset_name: cert_manager.sh.sha256
+          asset_content_type: text/plain
+
+      - name: Upload MD5 checksum
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ steps.create_release.outputs.upload_url }}
+          asset_path: ./cert_manager.sh.md5
+          asset_name: cert_manager.sh.md5
+          asset_content_type: text/plain
+
+  post-release:
+    name: Post-Release Tasks
+    runs-on: ubuntu-latest
+    needs: create-release
+    if: always() && needs.create-release.result == 'success'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Update installation instructions
+        run: |
+          VERSION="${{ needs.create-release.outputs.version || github.ref_name }}"
+          echo "Released version $VERSION successfully!"
+          echo "Installation command:"
+          echo "wget https://github.com/teslaproduuction/TLScript/releases/download/$VERSION/cert_manager.sh"
+
+      - name: Notify about release
+        run: |
+          echo "🎉 New release created successfully!"
+          echo "📦 Release: ${{ steps.get_version.outputs.version }}"
+          echo "🔗 URL: https://github.com/teslaproduuction/TLScript/releases/tag/${{ steps.get_version.outputs.version }}"

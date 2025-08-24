@@ -1,0 +1,357 @@
+name: Code Quality & Security
+
+on:
+  push:
+    branches: [ main, master, develop ]
+  pull_request:
+    branches: [ main, master ]
+  schedule:
+    - cron: '0 6 * * 1'  # Weekly on Monday at 6 AM
+
+jobs:
+  shellcheck:
+    name: ShellCheck Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck
+
+      - name: Run ShellCheck with different severity levels
+        run: |
+          echo "## ShellCheck Results" > shellcheck_report.md
+          echo "" >> shellcheck_report.md
+          
+          # Run shellcheck with different formats
+          echo "### Error Level Issues" >> shellcheck_report.md
+          if ! shellcheck -S error cert_manager.sh > shellcheck_errors.txt 2>&1; then
+            echo "❌ Errors found:" >> shellcheck_report.md
+            echo '```' >> shellcheck_report.md
+            cat shellcheck_errors.txt >> shellcheck_report.md
+            echo '```' >> shellcheck_report.md
+          else
+            echo "✅ No errors found" >> shellcheck_report.md
+          fi
+          
+          echo "" >> shellcheck_report.md
+          echo "### Warning Level Issues" >> shellcheck_report.md
+          if ! shellcheck -S warning cert_manager.sh > shellcheck_warnings.txt 2>&1; then
+            echo "⚠️ Warnings found:" >> shellcheck_report.md
+            echo '```' >> shellcheck_report.md
+            cat shellcheck_warnings.txt >> shellcheck_report.md
+            echo '```' >> shellcheck_report.md
+          else
+            echo "✅ No warnings found" >> shellcheck_report.md
+          fi
+          
+          echo "" >> shellcheck_report.md
+          echo "### Info Level Issues" >> shellcheck_report.md
+          if ! shellcheck -S info cert_manager.sh > shellcheck_info.txt 2>&1; then
+            echo "ℹ️ Info issues found:" >> shellcheck_report.md
+            echo '```' >> shellcheck_report.md
+            cat shellcheck_info.txt >> shellcheck_report.md
+            echo '```' >> shellcheck_report.md
+          else
+            echo "✅ No info issues found" >> shellcheck_report.md
+          fi
+
+      - name: Check critical ShellCheck errors
+        run: |
+          # Fail the build if there are error-level issues
+          shellcheck -S error cert_manager.sh
+
+      - name: Upload ShellCheck report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shellcheck-report
+          path: |
+            shellcheck_report.md
+            shellcheck_*.txt
+          retention-days: 7
+
+  security-scan:
+    name: Security Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Security scan for sensitive data
+        run: |
+          echo "## Security Scan Results" > security_report.md
+          echo "" >> security_report.md
+          
+          # Check for potential security issues
+          echo "### Checking for hardcoded credentials..." >> security_report.md
+          if grep -nE "(password|passwd|secret|token|key).*=" cert_manager.sh | grep -v -E "(API.*key|your.*key|user.*input|read.*-p)"; then
+            echo "❌ Potential hardcoded credentials found:" >> security_report.md
+            echo '```' >> security_report.md
+            grep -nE "(password|passwd|secret|token|key).*=" cert_manager.sh | grep -v -E "(API.*key|your.*key|user.*input|read.*-p)" >> security_report.md || true
+            echo '```' >> security_report.md
+          else
+            echo "✅ No hardcoded credentials detected" >> security_report.md
+          fi
+          
+          echo "" >> security_report.md
+          echo "### Checking for dangerous commands..." >> security_report.md
+          DANGEROUS_PATTERNS="rm -rf /|chmod 777|> /etc/passwd|eval.*\$|bash.*\$"
+          if grep -nE "$DANGEROUS_PATTERNS" cert_manager.sh >/dev/null; then
+            echo "⚠️ Potentially dangerous commands found:" >> security_report.md
+            echo '```' >> security_report.md
+            grep -nE "$DANGEROUS_PATTERNS" cert_manager.sh >> security_report.md || true
+            echo '```' >> security_report.md
+          else
+            echo "✅ No dangerous command patterns detected" >> security_report.md
+          fi
+          
+          echo "" >> security_report.md
+          echo "### Checking curl/wget security..." >> security_report.md
+          if grep -nE "curl.*http://|wget.*http://" cert_manager.sh >/dev/null; then
+            echo "⚠️ HTTP downloads detected (should use HTTPS):" >> security_report.md
+            echo '```' >> security_report.md
+            grep -nE "curl.*http://|wget.*http://" cert_manager.sh >> security_report.md || true
+            echo '```' >> security_report.md
+          else
+            echo "✅ All downloads use HTTPS or are locally validated" >> security_report.md
+          fi
+
+      - name: Check privilege escalation
+        run: |
+          echo "" >> security_report.md
+          echo "### Checking privilege requirements..." >> security_report.md
+          if grep -nE "\\\$EUID|\\\$UID|whoami|id -u" cert_manager.sh >/dev/null; then
+            echo "✅ Script checks user privileges:" >> security_report.md
+            echo '```' >> security_report.md
+            grep -nE "\\\$EUID|\\\$UID|whoami|id -u" cert_manager.sh >> security_report.md || true
+            echo '```' >> security_report.md
+          else
+            echo "⚠️ No privilege checks detected" >> security_report.md
+          fi
+
+      - name: Upload security report
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-report
+          path: security_report.md
+          retention-days: 30
+
+  code-style:
+    name: Code Style Check
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Check coding standards
+        run: |
+          echo "## Code Style Analysis" > style_report.md
+          echo "" >> style_report.md
+          
+          # Check shebang
+          echo "### Shebang Check" >> style_report.md
+          if head -1 cert_manager.sh | grep -q "#!/bin/bash"; then
+            echo "✅ Correct shebang found: \`#!/bin/bash\`" >> style_report.md
+          else
+            echo "❌ Missing or incorrect shebang" >> style_report.md
+          fi
+          
+          # Check for functions
+          echo "" >> style_report.md
+          echo "### Function Definition Check" >> style_report.md
+          FUNCTION_COUNT=$(grep -cE "^[a-zA-Z_][a-zA-Z0-9_]*\(\)" cert_manager.sh || echo "0")
+          echo "Found $FUNCTION_COUNT function definitions" >> style_report.md
+          if [ "$FUNCTION_COUNT" -gt 0 ]; then
+            echo "✅ Script uses functions for organization" >> style_report.md
+            echo "Functions found:" >> style_report.md
+            echo '```' >> style_report.md
+            grep -nE "^[a-zA-Z_][a-zA-Z0-9_]*\(\)" cert_manager.sh >> style_report.md || true
+            echo '```' >> style_report.md
+          fi
+          
+          # Check for error handling
+          echo "" >> style_report.md
+          echo "### Error Handling Check" >> style_report.md
+          if grep -qE "set -e|exit [0-9]|return [0-9]|\|\| exit" cert_manager.sh; then
+            echo "✅ Error handling patterns found" >> style_report.md
+          else
+            echo "⚠️ Limited error handling detected" >> style_report.md
+          fi
+          
+          # Check variable quoting
+          echo "" >> style_report.md
+          echo "### Variable Quoting Check" >> style_report.md
+          UNQUOTED_VARS=$(grep -cE '\$[a-zA-Z_][a-zA-Z0-9_]*[^"]' cert_manager.sh || echo "0")
+          if [ "$UNQUOTED_VARS" -gt 10 ]; then
+            echo "⚠️ Many unquoted variables found ($UNQUOTED_VARS)" >> style_report.md
+            echo "Consider using quotes around variables to prevent word splitting" >> style_report.md
+          else
+            echo "✅ Variable quoting looks reasonable" >> style_report.md
+          fi
+
+      - name: Check documentation
+        run: |
+          echo "" >> style_report.md
+          echo "### Documentation Check" >> style_report.md
+          
+          # Check for comments
+          COMMENT_LINES=$(grep -cE "^\s*#" cert_manager.sh || echo "0")
+          TOTAL_LINES=$(wc -l < cert_manager.sh)
+          COMMENT_RATIO=$((COMMENT_LINES * 100 / TOTAL_LINES))
+          
+          echo "Comment ratio: $COMMENT_RATIO% ($COMMENT_LINES/$TOTAL_LINES lines)" >> style_report.md
+          if [ "$COMMENT_RATIO" -gt 10 ]; then
+            echo "✅ Good comment coverage" >> style_report.md
+          else
+            echo "⚠️ Consider adding more comments for complex logic" >> style_report.md
+          fi
+
+      - name: Upload style report
+        uses: actions/upload-artifact@v4
+        with:
+          name: style-report
+          path: style_report.md
+          retention-days: 7
+
+  dependency-analysis:
+    name: Dependency Analysis
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Analyze dependencies
+        run: |
+          echo "## Dependency Analysis" > dependency_report.md
+          echo "" >> dependency_report.md
+          
+          echo "### External Commands Used" >> dependency_report.md
+          echo "Analyzing external commands called by the script:" >> dependency_report.md
+          echo '```' >> dependency_report.md
+          
+          # Extract commands (basic analysis)
+          grep -oE '\b(curl|wget|apt-get|yum|dnf|pacman|zypper|systemctl|crontab|acme\.sh)\b' cert_manager.sh | sort | uniq -c | sort -nr >> dependency_report.md || true
+          echo '```' >> dependency_report.md
+          
+          echo "" >> dependency_report.md
+          echo "### Package Managers Detected" >> dependency_report.md
+          if grep -q "apt-get\|apt " cert_manager.sh; then
+            echo "- ✅ APT (Ubuntu/Debian)" >> dependency_report.md
+          fi
+          if grep -q "yum\|dnf" cert_manager.sh; then
+            echo "- ✅ YUM/DNF (CentOS/RHEL/Fedora)" >> dependency_report.md
+          fi
+          if grep -q "pacman" cert_manager.sh; then
+            echo "- ✅ Pacman (Arch Linux)" >> dependency_report.md
+          fi
+          if grep -q "zypper" cert_manager.sh; then
+            echo "- ✅ Zypper (openSUSE)" >> dependency_report.md
+          fi
+          
+          echo "" >> dependency_report.md
+          echo "### Network Dependencies" >> dependency_report.md
+          if grep -qE "curl|wget" cert_manager.sh; then
+            echo "⚠️ Script requires internet connectivity" >> dependency_report.md
+            echo "External URLs accessed:" >> dependency_report.md
+            echo '```' >> dependency_report.md
+            grep -oE 'https?://[^"'\''[:space:]]+' cert_manager.sh | sort | uniq >> dependency_report.md || true
+            echo '```' >> dependency_report.md
+          fi
+
+      - name: Upload dependency report
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-report
+          path: dependency_report.md
+          retention-days: 7
+
+  final-report:
+    name: Generate Final Quality Report
+    runs-on: ubuntu-latest
+    needs: [shellcheck, security-scan, code-style, dependency-analysis]
+    if: always()
+    steps:
+      - name: Download all reports
+        uses: actions/download-artifact@v4
+        with:
+          path: reports/
+
+      - name: Generate combined report
+        run: |
+          echo "# TLScript Code Quality Report" > final_report.md
+          echo "" >> final_report.md
+          echo "Generated on: $(date)" >> final_report.md
+          echo "" >> final_report.md
+          
+          echo "## Summary" >> final_report.md
+          echo "| Check | Status |" >> final_report.md
+          echo "|-------|--------|" >> final_report.md
+          
+          if [ "${{ needs.shellcheck.result }}" = "success" ]; then
+            echo "| ShellCheck | ✅ Pass |" >> final_report.md
+          else
+            echo "| ShellCheck | ❌ Fail |" >> final_report.md
+          fi
+          
+          if [ "${{ needs.security-scan.result }}" = "success" ]; then
+            echo "| Security Scan | ✅ Pass |" >> final_report.md
+          else
+            echo "| Security Scan | ❌ Fail |" >> final_report.md
+          fi
+          
+          if [ "${{ needs.code-style.result }}" = "success" ]; then
+            echo "| Code Style | ✅ Pass |" >> final_report.md
+          else
+            echo "| Code Style | ❌ Fail |" >> final_report.md
+          fi
+          
+          if [ "${{ needs.dependency-analysis.result }}" = "success" ]; then
+            echo "| Dependency Analysis | ✅ Pass |" >> final_report.md
+          else
+            echo "| Dependency Analysis | ❌ Fail |" >> final_report.md
+          fi
+          
+          echo "" >> final_report.md
+          
+          # Combine individual reports if they exist
+          for report_dir in reports/*/; do
+            if [ -d "$report_dir" ]; then
+              for report_file in "$report_dir"*.md; do
+                if [ -f "$report_file" ]; then
+                  echo "" >> final_report.md
+                  echo "---" >> final_report.md
+                  echo "" >> final_report.md
+                  cat "$report_file" >> final_report.md
+                fi
+              done
+            fi
+          done
+
+      - name: Upload final report
+        uses: actions/upload-artifact@v4
+        with:
+          name: final-quality-report
+          path: final_report.md
+          retention-days: 30
+
+      - name: Comment on PR (if applicable)
+        uses: actions/github-script@v7
+        if: github.event_name == 'pull_request'
+        with:
+          script: |
+            const fs = require('fs');
+            try {
+              const report = fs.readFileSync('final_report.md', 'utf8');
+              github.rest.issues.createComment({
+                issue_number: context.issue.number,
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                body: '## 📊 Code Quality Report\n\n' + report
+              });
+            } catch (error) {
+              console.log('Could not post comment:', error);
+            }

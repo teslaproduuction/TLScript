@@ -1,0 +1,60 @@
+name: Update Badges
+
+on:
+  push:
+    branches: [ main, master ]
+  schedule:
+    - cron: '0 0 * * *'  # Daily at midnight
+
+jobs:
+  update-badges:
+    name: Update Repository Badges
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Generate badge information
+        run: |
+          echo "Repository badges can be added to README.md:" > badges_info.md
+          echo "" >> badges_info.md
+          echo "## Available Badges" >> badges_info.md
+          echo "" >> badges_info.md
+          echo "### Test Status" >> badges_info.md
+          echo '![Test Status](https://github.com/teslaproduuction/TLScript/workflows/Test%20cert_manager.sh/badge.svg)' >> badges_info.md
+          echo "" >> badges_info.md
+          echo "### Multi-OS Compatibility" >> badges_info.md
+          echo '![Multi-OS Test](https://github.com/teslaproduuction/TLScript/workflows/Multi-OS%20Compatibility%20Test/badge.svg)' >> badges_info.md
+          echo "" >> badges_info.md
+          echo "### Code Quality" >> badges_info.md
+          echo '![Code Quality](https://github.com/teslaproduuction/TLScript/workflows/Code%20Quality%20&%20Security/badge.svg)' >> badges_info.md
+          echo "" >> badges_info.md
+          echo "### Release" >> badges_info.md
+          echo '![Release](https://github.com/teslaproduuction/TLScript/workflows/Release%20Workflow/badge.svg)' >> badges_info.md
+          echo "" >> badges_info.md
+          echo "### Latest Release" >> badges_info.md
+          echo '![Latest Release](https://img.shields.io/github/v/release/teslaproduuction/TLScript)' >> badges_info.md
+          echo "" >> badges_info.md
+          echo "### License" >> badges_info.md
+          echo '![License](https://img.shields.io/github/license/teslaproduuction/TLScript)' >> badges_info.md
+          echo "" >> badges_info.md
+          echo "## Markdown for README.md" >> badges_info.md
+          echo "" >> badges_info.md
+          echo 'Add these badges to the top of your README.md:' >> badges_info.md
+          echo "" >> badges_info.md
+          echo '```markdown' >> badges_info.md
+          echo '[![Test Status](https://github.com/teslaproduuction/TLScript/workflows/Test%20cert_manager.sh/badge.svg)](https://github.com/teslaproduuction/TLScript/actions/workflows/test.yml)' >> badges_info.md
+          echo '[![Multi-OS Test](https://github.com/teslaproduuction/TLScript/workflows/Multi-OS%20Compatibility%20Test/badge.svg)](https://github.com/teslaproduuction/TLScript/actions/workflows/multi-os-test.yml)' >> badges_info.md
+          echo '[![Code Quality](https://github.com/teslaproduuction/TLScript/workflows/Code%20Quality%20&%20Security/badge.svg)](https://github.com/teslaproduuction/TLScript/actions/workflows/code-quality.yml)' >> badges_info.md
+          echo '[![Latest Release](https://img.shields.io/github/v/release/teslaproduuction/TLScript)](https://github.com/teslaproduuction/TLScript/releases)' >> badges_info.md
+          echo '[![License](https://img.shields.io/github/license/teslaproduuction/TLScript)](LICENSE)' >> badges_info.md
+          echo '```' >> badges_info.md
+          
+          cat badges_info.md
+
+      - name: Upload badge information
+        uses: actions/upload-artifact@v4
+        with:
+          name: badges-info
+          path: badges_info.md
+          retention-days: 7
