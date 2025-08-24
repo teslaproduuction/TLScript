@@ -1,0 +1,39 @@
+# System files
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+*~
+*.swp
+*.swo
+
+# Logs
+*.log
+*.logs
+
+# Certificate files (should not be committed)
+*.pem
+*.crt
+*.key
+*.cer
+
+# Backup files
+*.bak
+*.backup
+
+# IDE files
+.vscode/
+.idea/
+*.sublime-*
+
+# OS generated files
+.Trash-*
+ehthumbs.db
+
+# Test files
+test/
+tests/
+testing/
+/.gitignore
