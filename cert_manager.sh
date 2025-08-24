@@ -95,7 +95,7 @@ else
 fi
 
 confirm() {
-    if [[ $# > 1 ]]; then
+    if [[ $# -gt 1 ]]; then
         echo && read -p "$1 [Default $2]: " temp
         if [[ "${temp}" == "" ]]; then
             temp=$2
@@ -499,7 +499,7 @@ show_menu() {
 }
 
 # Handle command line arguments
-if [[ $# > 0 ]]; then
+if [[ $# -gt 0 ]]; then
     case $1 in
     "install")
         install_dependencies
