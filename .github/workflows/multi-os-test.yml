@@ -102,13 +102,16 @@ jobs:
             ${{ matrix.package_manager }} update -y -q
             
             # Handle curl/curl-minimal conflict in minimal containers
-            if ${{ matrix.package_manager }} list installed | grep -q curl-minimal; then
+            if rpm -q curl-minimal &>/dev/null; then
               echo "curl-minimal detected, removing before installing full curl..."
               ${{ matrix.package_manager }} remove -y curl-minimal || true
+              # Clear dnf cache after removal
+              ${{ matrix.package_manager }} clean all || true
             fi
             
-            ${{ matrix.package_manager }} install -y -q curl wget socat cronie procps-ng || \
-            ${{ matrix.package_manager }} install -y -q curl wget socat cron procps-ng || {
+            # Install packages with conflict resolution
+            ${{ matrix.package_manager }} install -y --allowerasing curl wget socat cronie procps-ng || \
+            ${{ matrix.package_manager }} install -y --allowerasing curl wget socat cron procps-ng || {
               echo "⚠️ Some packages failed to install, continuing with available tools..."
             }
             
