@@ -153,7 +153,7 @@ install_dependencies() {
 }
 
 install_acme() {
-    cd ~
+    cd ~ || return 1
     LOGI "Installing acme.sh..."
     curl https://get.acme.sh | sh
     if [ $? -ne 0 ]; then
@@ -280,10 +280,12 @@ ssl_cert_issue() {
     LOGD "Your domain is: ${domain}, checking it..."
     
     # here we need to judge whether there exists cert already
-    local currentCert=$(~/.acme.sh/acme.sh --list | tail -1 | awk '{print $1}')
+    local currentCert
+    currentCert=$(~/.acme.sh/acme.sh --list | tail -1 | awk '{print $1}')
 
     if [ "${currentCert}" == "${domain}" ]; then
-        local certInfo=$(~/.acme.sh/acme.sh --list)
+        local certInfo
+        certInfo=$(~/.acme.sh/acme.sh --list)
         LOGE "System already has certificates for this domain, cannot issue again. Current certificates details:"
         LOGI "$certInfo"
         exit 1
