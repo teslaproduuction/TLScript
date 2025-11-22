@@ -168,6 +168,60 @@ Please enter your selection [0-8]: 8
 | `check` | Проверить статус автообновления |
 | `setup-renewal` | Настроить автоматическое продление |
 
+## 🧪 Тестирование
+
+Проект включает комплексную систему автоматического тестирования через GitHub Actions:
+
+### Тестовые наборы
+
+1. **Основные тесты** (`test.yml`) - выполняются при каждом push/PR:
+   - ✅ ShellCheck анализ кода
+   - ✅ Проверка синтаксиса Bash
+   - ✅ Тесты базовой функциональности
+   - ✅ Проверка установки зависимостей
+   - ✅ Анализ безопасности
+   - ✅ Проверка документации
+   - ✅ Интеграционные тесты
+   - ✅ Тесты производительности
+
+2. **Мультиплатформенные тесты** (`multi-os-test.yml`):
+   - Ubuntu 20.04, 22.04, 24.04
+   - Debian 11, 12
+   - CentOS Stream 8, 9
+   - AlmaLinux 9
+   - Rocky Linux 9
+   - Fedora 38, 39, 40
+   - Arch Linux
+   - openSUSE Tumbleweed
+
+3. **Альтернативные тесты** (`alt-os-test.yml`):
+   - Amazon Linux 2023
+   - Oracle Linux 8, 9
+   - Red Hat UBI 8, 9
+   - Alpine Linux
+   - BusyBox
+
+4. **Проверка качества кода** (`code-quality.yml`):
+   - ShellCheck с разными уровнями строгости
+   - Сканирование безопасности
+   - Проверка стиля кода
+   - Анализ зависимостей
+
+### Локальное тестирование
+
+Перед коммитом рекомендуется запустить локальные тесты:
+
+```bash
+# Проверка синтаксиса
+bash -n cert_manager.sh
+
+# ShellCheck анализ (требует установки shellcheck)
+shellcheck -S warning cert_manager.sh
+
+# Базовый функциональный тест
+echo "0" | sudo ./cert_manager.sh
+```
+
 ## 🔧 Примеры использования
 
 ### Выпуск обычного сертификата
@@ -452,6 +506,60 @@ Please enter your selection [0-8]: 8
 | `list` | Show all certificates |
 | `check` | Check auto-renewal status |
 | `setup-renewal` | Setup automatic renewal |
+
+## 🧪 Testing
+
+The project includes a comprehensive automated testing system via GitHub Actions:
+
+### Test Suites
+
+1. **Main Tests** (`test.yml`) - run on every push/PR:
+   - ✅ ShellCheck code analysis
+   - ✅ Bash syntax validation
+   - ✅ Basic functionality tests
+   - ✅ Dependency installation tests
+   - ✅ Security analysis
+   - ✅ Documentation checks
+   - ✅ Integration tests
+   - ✅ Performance tests
+
+2. **Multi-Platform Tests** (`multi-os-test.yml`):
+   - Ubuntu 20.04, 22.04, 24.04
+   - Debian 11, 12
+   - CentOS Stream 8, 9
+   - AlmaLinux 9
+   - Rocky Linux 9
+   - Fedora 38, 39, 40
+   - Arch Linux
+   - openSUSE Tumbleweed
+
+3. **Alternative OS Tests** (`alt-os-test.yml`):
+   - Amazon Linux 2023
+   - Oracle Linux 8, 9
+   - Red Hat UBI 8, 9
+   - Alpine Linux
+   - BusyBox
+
+4. **Code Quality Checks** (`code-quality.yml`):
+   - ShellCheck with different severity levels
+   - Security scanning
+   - Code style verification
+   - Dependency analysis
+
+### Local Testing
+
+Before committing, it's recommended to run local tests:
+
+```bash
+# Syntax check
+bash -n cert_manager.sh
+
+# ShellCheck analysis (requires shellcheck installation)
+shellcheck -S warning cert_manager.sh
+
+# Basic functional test
+echo "0" | sudo ./cert_manager.sh
+```
 
 ## 🔧 Usage Examples
 
