@@ -33,17 +33,34 @@ sudo ./cert_manager.sh issue      # Выпустить сертификат
 ## 📖 Возможности
 
 ### SSL Сертификаты
-- ✅ Выпуск сертификатов Let's Encrypt через HTTP валидацию
-- ✅ Выпуск wildcard сертификатов через Cloudflare DNS
+
+#### ACME.SH Методы (Let's Encrypt/ZeroSSL)
+- ✅ HTTP валидация (порт 80)
+- ✅ Cloudflare DNS валидация
+- ✅ AWS Route53 DNS валидация
+- ✅ Google Cloud DNS валидация
+- ✅ DigitalOcean DNS валидация
+- ✅ ZeroSSL как альтернативный CA
+
+#### Certbot Методы
+- ✅ Standalone режим (порт 80)
+- ✅ Webroot режим (существующий веб-сервер)
+- ✅ Cloudflare DNS плагин
+- ✅ AWS Route53 DNS плагин
+- ✅ Google Cloud DNS плагин
+- ✅ DigitalOcean DNS плагин
+
+#### Управление Сертификатами
 - ✅ Отзыв сертификатов
 - ✅ Принудительное обновление сертификатов
 - ✅ Просмотр всех установленных сертификатов
+- ✅ Генерация самоподписанных сертификатов
 
 ### Автоматизация
 - ✅ Автоматическая установка всех зависимостей
 - ✅ Настройка cron для автоматического продления
 - ✅ Логирование процесса обновления
-- ✅ Автообновление acme.sh
+- ✅ Автообновление acme.sh и certbot
 
 ### Поддерживаемые ОС
 - Ubuntu 20.04+
@@ -67,19 +84,36 @@ sudo ./cert_manager.sh
 
 ```
   SSL Certificate Management Script
-  0. Exit Script
-————————————————
-  1. Issue SSL Certificate (HTTP validation)
-  2. Issue SSL Certificate (Cloudflare DNS)
-  3. Revoke Certificate
-  4. Force Renew Certificate
-  5. List All Certificates
-————————————————
-  6. Install Dependencies
-  7. Setup Automatic Renewal
-  8. Check Auto-Renewal Status
+  0.  Exit Script
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ACME.SH Methods (Let's Encrypt/ZeroSSL)
+  1.  Issue via acme.sh (HTTP validation)
+  2.  Issue via acme.sh (Cloudflare DNS)
+  3.  Issue via acme.sh (AWS Route53 DNS)
+  4.  Issue via acme.sh (Google Cloud DNS)
+  5.  Issue via acme.sh (DigitalOcean DNS)
+  6.  Issue via acme.sh (ZeroSSL CA)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  CERTBOT Methods
+  11. Issue via Certbot (Standalone)
+  12. Issue via Certbot (Webroot)
+  13. Issue via Certbot (Cloudflare DNS)
+  14. Issue via Certbot (AWS Route53 DNS)
+  15. Issue via Certbot (Google Cloud DNS)
+  16. Issue via Certbot (DigitalOcean DNS)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Certificate Management
+  21. Revoke Certificate
+  22. Force Renew Certificate
+  23. List All Certificates
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Other Options
+  31. Generate Self-Signed Certificate
+  32. Install Dependencies
+  33. Setup Automatic Renewal
+  34. Check Auto-Renewal Status
 
-Please enter your selection [0-8]:
+Please enter your selection:
 ```
 
 #### Пример работы - Выпуск сертификата (опция 1):
@@ -157,11 +191,20 @@ Please enter your selection [0-8]: 8
 
 ### Командная строка
 
+Скрипт поддерживает прямой вызов функций через командную строку:
+
 | Команда | Описание |
 |---------|----------|
-| `install` | Установить все зависимости |
-| `issue` | Выпустить сертификат через HTTP |
-| `cloudflare` | Выпустить сертификат через Cloudflare DNS |
+| `install` | Установить все зависимости (acme.sh, certbot) |
+| `issue` | Выпустить сертификат через HTTP (acme.sh) |
+| `cloudflare` | Выпустить сертификат через Cloudflare DNS (acme.sh) |
+| `route53` | Выпустить сертификат через AWS Route53 DNS (acme.sh) |
+| `gcloud` | Выпустить сертификат через Google Cloud DNS (acme.sh) |
+| `digitalocean` | Выпустить сертификат через DigitalOcean DNS (acme.sh) |
+| `zerossl` | Выпустить сертификат через ZeroSSL CA (acme.sh) |
+| `certbot-standalone` | Выпустить сертификат через Certbot standalone |
+| `certbot-webroot` | Выпустить сертификат через Certbot webroot |
+| `self-signed` | Создать самоподписанный сертификат |
 | `revoke` | Отозвать сертификат |
 | `renew` | Принудительно обновить сертификат |
 | `list` | Показать все сертификаты |
@@ -372,17 +415,34 @@ sudo ./cert_manager.sh issue      # Issue certificate
 ## 📖 Features
 
 ### SSL Certificates
-- ✅ Issue Let's Encrypt certificates via HTTP validation
-- ✅ Issue wildcard certificates via Cloudflare DNS
+
+#### ACME.SH Methods (Let's Encrypt/ZeroSSL)
+- ✅ HTTP validation (port 80)
+- ✅ Cloudflare DNS validation
+- ✅ AWS Route53 DNS validation
+- ✅ Google Cloud DNS validation
+- ✅ DigitalOcean DNS validation
+- ✅ ZeroSSL as alternative CA
+
+#### Certbot Methods
+- ✅ Standalone mode (port 80)
+- ✅ Webroot mode (existing web server)
+- ✅ Cloudflare DNS plugin
+- ✅ AWS Route53 DNS plugin
+- ✅ Google Cloud DNS plugin
+- ✅ DigitalOcean DNS plugin
+
+#### Certificate Management
 - ✅ Revoke certificates
 - ✅ Force renew certificates
 - ✅ View all installed certificates
+- ✅ Generate self-signed certificates
 
 ### Automation
 - ✅ Automatic installation of all dependencies
 - ✅ Setup cron for automatic renewal
 - ✅ Renewal process logging
-- ✅ Auto-update acme.sh
+- ✅ Auto-update acme.sh and certbot
 
 ### Supported OS
 - Ubuntu 20.04+
@@ -406,19 +466,36 @@ You will see this menu:
 
 ```
   SSL Certificate Management Script
-  0. Exit Script
-————————————————
-  1. Issue SSL Certificate (HTTP validation)
-  2. Issue SSL Certificate (Cloudflare DNS)
-  3. Revoke Certificate
-  4. Force Renew Certificate
-  5. List All Certificates
-————————————————
-  6. Install Dependencies
-  7. Setup Automatic Renewal
-  8. Check Auto-Renewal Status
+  0.  Exit Script
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ACME.SH Methods (Let's Encrypt/ZeroSSL)
+  1.  Issue via acme.sh (HTTP validation)
+  2.  Issue via acme.sh (Cloudflare DNS)
+  3.  Issue via acme.sh (AWS Route53 DNS)
+  4.  Issue via acme.sh (Google Cloud DNS)
+  5.  Issue via acme.sh (DigitalOcean DNS)
+  6.  Issue via acme.sh (ZeroSSL CA)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  CERTBOT Methods
+  11. Issue via Certbot (Standalone)
+  12. Issue via Certbot (Webroot)
+  13. Issue via Certbot (Cloudflare DNS)
+  14. Issue via Certbot (AWS Route53 DNS)
+  15. Issue via Certbot (Google Cloud DNS)
+  16. Issue via Certbot (DigitalOcean DNS)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Certificate Management
+  21. Revoke Certificate
+  22. Force Renew Certificate
+  23. List All Certificates
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  Other Options
+  31. Generate Self-Signed Certificate
+  32. Install Dependencies
+  33. Setup Automatic Renewal
+  34. Check Auto-Renewal Status
 
-Please enter your selection [0-8]:
+Please enter your selection:
 ```
 
 #### Example Usage - Issue Certificate (option 1):
@@ -496,11 +573,20 @@ Please enter your selection [0-8]: 8
 
 ### Command Line
 
+The script supports direct function calls via command line:
+
 | Command | Description |
 |---------|-------------|
-| `install` | Install all dependencies |
-| `issue` | Issue certificate via HTTP |
-| `cloudflare` | Issue certificate via Cloudflare DNS |
+| `install` | Install all dependencies (acme.sh, certbot) |
+| `issue` | Issue certificate via HTTP (acme.sh) |
+| `cloudflare` | Issue certificate via Cloudflare DNS (acme.sh) |
+| `route53` | Issue certificate via AWS Route53 DNS (acme.sh) |
+| `gcloud` | Issue certificate via Google Cloud DNS (acme.sh) |
+| `digitalocean` | Issue certificate via DigitalOcean DNS (acme.sh) |
+| `zerossl` | Issue certificate via ZeroSSL CA (acme.sh) |
+| `certbot-standalone` | Issue certificate via Certbot standalone |
+| `certbot-webroot` | Issue certificate via Certbot webroot |
+| `self-signed` | Generate self-signed certificate |
 | `revoke` | Revoke certificate |
 | `renew` | Force renew certificate |
 | `list` | Show all certificates |
