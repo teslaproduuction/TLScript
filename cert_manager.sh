@@ -165,6 +165,74 @@ install_acme() {
     return 0
 }
 
+install_certbot() {
+    LOGI "Installing Certbot..."
+
+    case "${release}" in
+    ubuntu | debian | armbian)
+        apt update && apt install -y certbot python3-certbot
+        ;;
+    centos | almalinux | rocky | oracle)
+        if [[ ${os_version} -ge 8 ]]; then
+            dnf install -y epel-release
+            dnf install -y certbot python3-certbot
+        else
+            yum install -y epel-release
+            yum install -y certbot python3-certbot
+        fi
+        ;;
+    fedora)
+        dnf install -y certbot python3-certbot
+        ;;
+    arch | manjaro | parch)
+        pacman -Sy --noconfirm certbot
+        ;;
+    *)
+        LOGE "Unsupported operating system for Certbot installation"
+        return 1
+        ;;
+    esac
+
+    if [ $? -ne 0 ]; then
+        LOGE "Failed to install Certbot"
+        return 1
+    else
+        LOGI "Certbot installed successfully"
+    fi
+    return 0
+}
+
+install_certbot_dns_plugins() {
+    local plugin=$1
+    LOGI "Installing Certbot DNS plugin: ${plugin}..."
+
+    case "${release}" in
+    ubuntu | debian | armbian)
+        apt install -y python3-certbot-dns-${plugin}
+        ;;
+    centos | almalinux | rocky | oracle | fedora)
+        dnf install -y python3-certbot-dns-${plugin} 2>/dev/null || yum install -y python3-certbot-dns-${plugin}
+        ;;
+    arch | manjaro | parch)
+        # Arch uses pip for certbot plugins
+        pacman -Sy --noconfirm python-pip
+        pip install certbot-dns-${plugin}
+        ;;
+    *)
+        LOGE "Unsupported operating system for Certbot DNS plugins"
+        return 1
+        ;;
+    esac
+
+    if [ $? -ne 0 ]; then
+        LOGE "Failed to install Certbot DNS plugin: ${plugin}"
+        return 1
+    else
+        LOGI "Certbot DNS plugin ${plugin} installed successfully"
+    fi
+    return 0
+}
+
 setup_auto_renewal() {
     LOGI "Setting up automatic certificate renewal..."
     
@@ -286,7 +354,7 @@ ssl_cert_issue_CF() {
     if [ $? -eq 0 ]; then
         # Install dependencies first
         install_dependencies
-        
+
         # check for acme.sh first
         if ! command -v ~/.acme.sh/acme.sh &>/dev/null; then
             echo "acme.sh could not be found. Installing it now..."
@@ -296,7 +364,7 @@ ssl_cert_issue_CF() {
                 exit 1
             fi
         fi
-        
+
         CF_Domain=""
         CF_GlobalKey=""
         CF_AccountEmail=""
@@ -339,15 +407,308 @@ ssl_cert_issue_CF() {
         else
             LOGI "Certificate installed Successfully"
         fi
-        
+
         # Set up automatic renewal
         setup_auto_renewal
-        
+
         LOGI "The certificate is installed and auto-renewal is turned on. Certificate files location:"
         ls -lah /root/cert/
         chmod 755 $certPath
     else
         show_menu
+    fi
+}
+
+ssl_cert_issue_acme_route53() {
+    echo -e ""
+    LOGD "******Instructions for use******"
+    LOGI "This script requires AWS Route53 credentials:"
+    LOGI "1. AWS Access Key ID"
+    LOGI "2. AWS Secret Access Key"
+    LOGI "3. Domain name managed by Route53"
+    LOGI "4. Certificate will be installed to /root/cert"
+    confirm "Confirmed?" "y"
+    if [ $? -eq 0 ]; then
+        install_dependencies
+
+        if ! command -v ~/.acme.sh/acme.sh &>/dev/null; then
+            LOGI "Installing acme.sh..."
+            install_acme
+            if [ $? -ne 0 ]; then
+                LOGE "Install acme.sh failed"
+                return 1
+            fi
+        fi
+
+        local domain=""
+        read -p "Enter your domain name: " domain
+        LOGD "Domain: ${domain}"
+
+        local aws_key=""
+        read -p "Enter AWS Access Key ID: " aws_key
+
+        local aws_secret=""
+        read -p "Enter AWS Secret Access Key: " aws_secret
+
+        certPath="/root/cert/${domain}"
+        mkdir -p "$certPath"
+
+        export AWS_ACCESS_KEY_ID="${aws_key}"
+        export AWS_SECRET_ACCESS_KEY="${aws_secret}"
+
+        ~/.acme.sh/acme.sh --set-default-ca --server letsencrypt
+        ~/.acme.sh/acme.sh --issue --dns dns_aws -d ${domain} -d *.${domain} --log
+
+        if [ $? -ne 0 ]; then
+            LOGE "Certificate issuance failed"
+            return 1
+        fi
+
+        ~/.acme.sh/acme.sh --installcert -d ${domain} -d *.${domain} \
+            --key-file ${certPath}/privkey.pem \
+            --fullchain-file ${certPath}/fullchain.pem \
+            --cert-file ${certPath}/cert.pem
+
+        if [ $? -eq 0 ]; then
+            LOGI "Certificate installed successfully at ${certPath}"
+            setup_auto_renewal
+        else
+            LOGE "Certificate installation failed"
+            return 1
+        fi
+    fi
+}
+
+ssl_cert_issue_acme_gcloud() {
+    echo -e ""
+    LOGD "******Instructions for use******"
+    LOGI "This script requires Google Cloud DNS credentials:"
+    LOGI "1. GCP Service Account JSON file"
+    LOGI "2. Domain name managed by Google Cloud DNS"
+    LOGI "3. Certificate will be installed to /root/cert"
+    confirm "Confirmed?" "y"
+    if [ $? -eq 0 ]; then
+        install_dependencies
+
+        if ! command -v ~/.acme.sh/acme.sh &>/dev/null; then
+            LOGI "Installing acme.sh..."
+            install_acme
+            if [ $? -ne 0 ]; then
+                LOGE "Install acme.sh failed"
+                return 1
+            fi
+        fi
+
+        local domain=""
+        read -p "Enter your domain name: " domain
+        LOGD "Domain: ${domain}"
+
+        local gcp_key_file=""
+        read -p "Enter path to GCP service account JSON file: " gcp_key_file
+
+        if [ ! -f "$gcp_key_file" ]; then
+            LOGE "GCP credentials file not found: ${gcp_key_file}"
+            return 1
+        fi
+
+        certPath="/root/cert/${domain}"
+        mkdir -p "$certPath"
+
+        export GCE_SERVICE_ACCOUNT_FILE="${gcp_key_file}"
+
+        ~/.acme.sh/acme.sh --set-default-ca --server letsencrypt
+        ~/.acme.sh/acme.sh --issue --dns dns_gcloud -d ${domain} -d *.${domain} --log
+
+        if [ $? -ne 0 ]; then
+            LOGE "Certificate issuance failed"
+            return 1
+        fi
+
+        ~/.acme.sh/acme.sh --installcert -d ${domain} -d *.${domain} \
+            --key-file ${certPath}/privkey.pem \
+            --fullchain-file ${certPath}/fullchain.pem \
+            --cert-file ${certPath}/cert.pem
+
+        if [ $? -eq 0 ]; then
+            LOGI "Certificate installed successfully at ${certPath}"
+            setup_auto_renewal
+        else
+            LOGE "Certificate installation failed"
+            return 1
+        fi
+    fi
+}
+
+ssl_cert_issue_acme_digitalocean() {
+    echo -e ""
+    LOGD "******Instructions for use******"
+    LOGI "This script requires DigitalOcean credentials:"
+    LOGI "1. DigitalOcean API Token"
+    LOGI "2. Domain name managed by DigitalOcean DNS"
+    LOGI "3. Certificate will be installed to /root/cert"
+    confirm "Confirmed?" "y"
+    if [ $? -eq 0 ]; then
+        install_dependencies
+
+        if ! command -v ~/.acme.sh/acme.sh &>/dev/null; then
+            LOGI "Installing acme.sh..."
+            install_acme
+            if [ $? -ne 0 ]; then
+                LOGE "Install acme.sh failed"
+                return 1
+            fi
+        fi
+
+        local domain=""
+        read -p "Enter your domain name: " domain
+        LOGD "Domain: ${domain}"
+
+        local do_token=""
+        read -p "Enter DigitalOcean API Token: " do_token
+
+        certPath="/root/cert/${domain}"
+        mkdir -p "$certPath"
+
+        export DO_API_KEY="${do_token}"
+
+        ~/.acme.sh/acme.sh --set-default-ca --server letsencrypt
+        ~/.acme.sh/acme.sh --issue --dns dns_dgon -d ${domain} -d *.${domain} --log
+
+        if [ $? -ne 0 ]; then
+            LOGE "Certificate issuance failed"
+            return 1
+        fi
+
+        ~/.acme.sh/acme.sh --installcert -d ${domain} -d *.${domain} \
+            --key-file ${certPath}/privkey.pem \
+            --fullchain-file ${certPath}/fullchain.pem \
+            --cert-file ${certPath}/cert.pem
+
+        if [ $? -eq 0 ]; then
+            LOGI "Certificate installed successfully at ${certPath}"
+            setup_auto_renewal
+        else
+            LOGE "Certificate installation failed"
+            return 1
+        fi
+    fi
+}
+
+ssl_cert_issue_acme_zerossl() {
+    echo -e ""
+    LOGD "******Instructions for use******"
+    LOGI "This script will issue certificate using ZeroSSL CA:"
+    LOGI "1. ZeroSSL account email"
+    LOGI "2. Domain name"
+    LOGI "3. Certificate will be installed to /root/cert"
+    confirm "Confirmed?" "y"
+    if [ $? -eq 0 ]; then
+        install_dependencies
+
+        if ! command -v ~/.acme.sh/acme.sh &>/dev/null; then
+            LOGI "Installing acme.sh..."
+            install_acme
+            if [ $? -ne 0 ]; then
+                LOGE "Install acme.sh failed"
+                return 1
+            fi
+        fi
+
+        local domain=""
+        read -p "Enter your domain name: " domain
+        LOGD "Domain: ${domain}"
+
+        local email=""
+        read -p "Enter your ZeroSSL account email: " email
+        LOGD "Email: ${email}"
+
+        certPath="/root/cert/${domain}"
+        if [ ! -d "$certPath" ]; then
+            mkdir -p "$certPath"
+        else
+            rm -rf "$certPath"
+            mkdir -p "$certPath"
+        fi
+
+        local WebPort=80
+        read -p "Choose port for validation (default 80): " WebPort
+        if [[ ${WebPort} -gt 65535 || ${WebPort} -lt 1 ]]; then
+            LOGE "Invalid port ${WebPort}, using default 80"
+            WebPort=80
+        fi
+        LOGI "Using port: ${WebPort}"
+
+        # Register with ZeroSSL
+        ~/.acme.sh/acme.sh --register-account --server zerossl --eab-kid "" --eab-hmac-key ""
+
+        # Set ZeroSSL as default CA
+        ~/.acme.sh/acme.sh --set-default-ca --server zerossl
+
+        # Issue certificate
+        ~/.acme.sh/acme.sh --issue -d ${domain} --standalone --httpport ${WebPort}
+
+        if [ $? -ne 0 ]; then
+            LOGE "Certificate issuance failed"
+            rm -rf ~/.acme.sh/${domain}
+            return 1
+        fi
+
+        ~/.acme.sh/acme.sh --installcert -d ${domain} \
+            --key-file ${certPath}/privkey.pem \
+            --fullchain-file ${certPath}/fullchain.pem
+
+        if [ $? -eq 0 ]; then
+            LOGI "ZeroSSL certificate installed successfully!"
+            LOGI "Certificate location: ${certPath}"
+            setup_auto_renewal
+        else
+            LOGE "Certificate installation failed"
+            return 1
+        fi
+    fi
+}
+
+ssl_cert_selfsigned() {
+    LOGI "Generating self-signed certificate..."
+
+    local domain=""
+    read -p "Enter domain/common name for certificate: " domain
+    LOGD "Domain: ${domain}"
+
+    local days=365
+    read -p "Enter validity period in days (default 365): " days
+    if [[ -z "${days}" ]]; then
+        days=365
+    fi
+
+    certPath="/root/cert/${domain}"
+    mkdir -p "$certPath"
+
+    # Generate private key
+    openssl genrsa -out ${certPath}/privkey.pem 2048
+
+    if [ $? -ne 0 ]; then
+        LOGE "Failed to generate private key"
+        return 1
+    fi
+
+    # Generate self-signed certificate
+    openssl req -new -x509 -key ${certPath}/privkey.pem \
+        -out ${certPath}/fullchain.pem -days ${days} \
+        -subj "/C=US/ST=State/L=City/O=Organization/CN=${domain}"
+
+    if [ $? -eq 0 ]; then
+        LOGI "Self-signed certificate generated successfully!"
+        LOGI "Certificate location: ${certPath}"
+        LOGI "Private key: ${certPath}/privkey.pem"
+        LOGI "Certificate: ${certPath}/fullchain.pem"
+        LOGI "Valid for: ${days} days"
+        LOGI ""
+        LOGE "WARNING: Self-signed certificates are NOT trusted by browsers!"
+        LOGE "Use only for testing/development purposes."
+    else
+        LOGE "Failed to generate certificate"
+        return 1
     fi
 }
 
@@ -404,7 +765,7 @@ list_certificates() {
 
 check_auto_renewal() {
     LOGI "Checking automatic renewal status..."
-    
+
     # Check cron job
     if crontab -l 2>/dev/null | grep -q "acme.sh --cron"; then
         LOGI "Auto renewal cron job is configured:"
@@ -412,7 +773,7 @@ check_auto_renewal() {
     else
         LOGE "Auto renewal cron job is not configured"
     fi
-    
+
     # Check acme.sh auto-upgrade status
     if [ -f ~/.acme.sh/account.conf ]; then
         if grep -q "AUTO_UPGRADE" ~/.acme.sh/account.conf; then
@@ -421,7 +782,7 @@ check_auto_renewal() {
             LOGI "acme.sh auto-upgrade status unknown"
         fi
     fi
-    
+
     # Check last renewal log
     if [ -f /var/log/acme_renewal.log ]; then
         LOGI "Last renewal log entries:"
@@ -431,43 +792,464 @@ check_auto_renewal() {
     fi
 }
 
+# Certbot SSL certificate methods
+ssl_cert_issue_certbot_standalone() {
+    install_dependencies
+
+    # Check for certbot
+    if ! command -v certbot &>/dev/null; then
+        LOGI "Certbot not found. Installing..."
+        install_certbot
+        if [ $? -ne 0 ]; then
+            LOGE "Failed to install Certbot"
+            return 1
+        fi
+    fi
+
+    local domain=""
+    read -p "Please enter your domain name: " domain
+    LOGD "Your domain is: ${domain}"
+
+    local email=""
+    read -p "Please enter your email address: " email
+    LOGD "Your email is: ${email}"
+
+    # Create certificate directory
+    certPath="/root/cert/${domain}"
+    if [ ! -d "$certPath" ]; then
+        mkdir -p "$certPath"
+    fi
+
+    # Issue certificate using standalone mode
+    LOGI "Issuing certificate using Certbot standalone mode..."
+    certbot certonly --standalone -d ${domain} --email ${email} --agree-tos --non-interactive
+
+    if [ $? -ne 0 ]; then
+        LOGE "Failed to issue certificate with Certbot"
+        return 1
+    fi
+
+    # Copy certificates to our standard location
+    cp /etc/letsencrypt/live/${domain}/privkey.pem ${certPath}/privkey.pem
+    cp /etc/letsencrypt/live/${domain}/fullchain.pem ${certPath}/fullchain.pem
+
+    LOGI "Certificate issued successfully!"
+    LOGI "Certificate files are located at: ${certPath}"
+    LOGI "Private key: ${certPath}/privkey.pem"
+    LOGI "Full chain: ${certPath}/fullchain.pem"
+
+    # Setup auto-renewal (Certbot has built-in renewal via systemd timer)
+    if command -v systemctl &>/dev/null; then
+        systemctl enable certbot.timer 2>/dev/null || systemctl enable certbot-renew.timer 2>/dev/null
+        systemctl start certbot.timer 2>/dev/null || systemctl start certbot-renew.timer 2>/dev/null
+        LOGI "Certbot automatic renewal timer enabled"
+    fi
+}
+
+ssl_cert_issue_certbot_webroot() {
+    install_dependencies
+
+    # Check for certbot
+    if ! command -v certbot &>/dev/null; then
+        LOGI "Certbot not found. Installing..."
+        install_certbot
+        if [ $? -ne 0 ]; then
+            LOGE "Failed to install Certbot"
+            return 1
+        fi
+    fi
+
+    local domain=""
+    read -p "Please enter your domain name: " domain
+    LOGD "Your domain is: ${domain}"
+
+    local email=""
+    read -p "Please enter your email address: " email
+    LOGD "Your email is: ${email}"
+
+    local webroot=""
+    read -p "Please enter your webroot path (e.g., /var/www/html): " webroot
+    LOGD "Your webroot path is: ${webroot}"
+
+    # Validate webroot exists
+    if [ ! -d "$webroot" ]; then
+        LOGE "Webroot directory does not exist: ${webroot}"
+        return 1
+    fi
+
+    # Create certificate directory
+    certPath="/root/cert/${domain}"
+    if [ ! -d "$certPath" ]; then
+        mkdir -p "$certPath"
+    fi
+
+    # Issue certificate using webroot mode
+    LOGI "Issuing certificate using Certbot webroot mode..."
+    certbot certonly --webroot -w ${webroot} -d ${domain} --email ${email} --agree-tos --non-interactive
+
+    if [ $? -ne 0 ]; then
+        LOGE "Failed to issue certificate with Certbot"
+        return 1
+    fi
+
+    # Copy certificates to our standard location
+    cp /etc/letsencrypt/live/${domain}/privkey.pem ${certPath}/privkey.pem
+    cp /etc/letsencrypt/live/${domain}/fullchain.pem ${certPath}/fullchain.pem
+
+    LOGI "Certificate issued successfully!"
+    LOGI "Certificate files are located at: ${certPath}"
+    LOGI "Private key: ${certPath}/privkey.pem"
+    LOGI "Full chain: ${certPath}/fullchain.pem"
+
+    # Setup auto-renewal
+    if command -v systemctl &>/dev/null; then
+        systemctl enable certbot.timer 2>/dev/null || systemctl enable certbot-renew.timer 2>/dev/null
+        systemctl start certbot.timer 2>/dev/null || systemctl start certbot-renew.timer 2>/dev/null
+        LOGI "Certbot automatic renewal timer enabled"
+    fi
+}
+
+ssl_cert_issue_certbot_dns_cloudflare() {
+    install_dependencies
+
+    # Check for certbot
+    if ! command -v certbot &>/dev/null; then
+        LOGI "Certbot not found. Installing..."
+        install_certbot
+        if [ $? -ne 0 ]; then
+            LOGE "Failed to install Certbot"
+            return 1
+        fi
+    fi
+
+    # Install Cloudflare DNS plugin
+    install_certbot_dns_plugins "cloudflare"
+
+    local domain=""
+    read -p "Please enter your domain name: " domain
+    LOGD "Your domain is: ${domain}"
+
+    local email=""
+    read -p "Please enter your email address: " email
+    LOGD "Your email is: ${email}"
+
+    local cf_token=""
+    read -p "Please enter your Cloudflare API Token: " cf_token
+
+    # Create Cloudflare credentials file
+    local creds_file="/root/.secrets/certbot/cloudflare.ini"
+    mkdir -p /root/.secrets/certbot
+    echo "dns_cloudflare_api_token = ${cf_token}" > ${creds_file}
+    chmod 600 ${creds_file}
+
+    # Create certificate directory
+    certPath="/root/cert/${domain}"
+    if [ ! -d "$certPath" ]; then
+        mkdir -p "$certPath"
+    fi
+
+    # Issue certificate using Cloudflare DNS
+    LOGI "Issuing certificate using Certbot Cloudflare DNS..."
+    certbot certonly --dns-cloudflare --dns-cloudflare-credentials ${creds_file} \
+        -d ${domain} -d *.${domain} --email ${email} --agree-tos --non-interactive
+
+    if [ $? -ne 0 ]; then
+        LOGE "Failed to issue certificate with Certbot Cloudflare DNS"
+        return 1
+    fi
+
+    # Copy certificates to our standard location
+    cp /etc/letsencrypt/live/${domain}/privkey.pem ${certPath}/privkey.pem
+    cp /etc/letsencrypt/live/${domain}/fullchain.pem ${certPath}/fullchain.pem
+
+    LOGI "Certificate issued successfully!"
+    LOGI "Certificate files are located at: ${certPath}"
+    LOGI "Wildcard certificate includes *.${domain}"
+
+    # Setup auto-renewal
+    if command -v systemctl &>/dev/null; then
+        systemctl enable certbot.timer 2>/dev/null || systemctl enable certbot-renew.timer 2>/dev/null
+        systemctl start certbot.timer 2>/dev/null || systemctl start certbot-renew.timer 2>/dev/null
+        LOGI "Certbot automatic renewal timer enabled"
+    fi
+}
+
+ssl_cert_issue_certbot_dns_route53() {
+    install_dependencies
+
+    # Check for certbot
+    if ! command -v certbot &>/dev/null; then
+        LOGI "Certbot not found. Installing..."
+        install_certbot
+        if [ $? -ne 0 ]; then
+            LOGE "Failed to install Certbot"
+            return 1
+        fi
+    fi
+
+    # Install Route53 DNS plugin
+    install_certbot_dns_plugins "route53"
+
+    local domain=""
+    read -p "Please enter your domain name: " domain
+    LOGD "Your domain is: ${domain}"
+
+    local email=""
+    read -p "Please enter your email address: " email
+    LOGD "Your email is: ${email}"
+
+    local aws_access_key=""
+    read -p "Please enter your AWS Access Key ID: " aws_access_key
+
+    local aws_secret_key=""
+    read -p "Please enter your AWS Secret Access Key: " aws_secret_key
+
+    # Create AWS credentials file
+    local creds_file="/root/.secrets/certbot/route53.ini"
+    mkdir -p /root/.secrets/certbot
+    cat > ${creds_file} << EOF
+[default]
+aws_access_key_id = ${aws_access_key}
+aws_secret_access_key = ${aws_secret_key}
+EOF
+    chmod 600 ${creds_file}
+
+    # Export AWS credentials
+    export AWS_CONFIG_FILE=${creds_file}
+
+    # Create certificate directory
+    certPath="/root/cert/${domain}"
+    if [ ! -d "$certPath" ]; then
+        mkdir -p "$certPath"
+    fi
+
+    # Issue certificate using Route53 DNS
+    LOGI "Issuing certificate using Certbot Route53 DNS..."
+    certbot certonly --dns-route53 -d ${domain} -d *.${domain} \
+        --email ${email} --agree-tos --non-interactive
+
+    if [ $? -ne 0 ]; then
+        LOGE "Failed to issue certificate with Certbot Route53 DNS"
+        return 1
+    fi
+
+    # Copy certificates to our standard location
+    cp /etc/letsencrypt/live/${domain}/privkey.pem ${certPath}/privkey.pem
+    cp /etc/letsencrypt/live/${domain}/fullchain.pem ${certPath}/fullchain.pem
+
+    LOGI "Certificate issued successfully!"
+    LOGI "Certificate files are located at: ${certPath}"
+    LOGI "Wildcard certificate includes *.${domain}"
+
+    # Setup auto-renewal
+    if command -v systemctl &>/dev/null; then
+        systemctl enable certbot.timer 2>/dev/null || systemctl enable certbot-renew.timer 2>/dev/null
+        systemctl start certbot.timer 2>/dev/null || systemctl start certbot-renew.timer 2>/dev/null
+        LOGI "Certbot automatic renewal timer enabled"
+    fi
+}
+
+ssl_cert_issue_certbot_dns_google() {
+    install_dependencies
+
+    # Check for certbot
+    if ! command -v certbot &>/dev/null; then
+        LOGI "Certbot not found. Installing..."
+        install_certbot
+        if [ $? -ne 0 ]; then
+            LOGE "Failed to install Certbot"
+            return 1
+        fi
+    fi
+
+    # Install Google DNS plugin
+    install_certbot_dns_plugins "google"
+
+    local domain=""
+    read -p "Please enter your domain name: " domain
+    LOGD "Your domain is: ${domain}"
+
+    local email=""
+    read -p "Please enter your email address: " email
+    LOGD "Your email is: ${email}"
+
+    local gcp_credentials=""
+    read -p "Please enter path to your GCP service account JSON file: " gcp_credentials
+
+    if [ ! -f "$gcp_credentials" ]; then
+        LOGE "GCP credentials file not found: ${gcp_credentials}"
+        return 1
+    fi
+
+    # Create certificate directory
+    certPath="/root/cert/${domain}"
+    if [ ! -d "$certPath" ]; then
+        mkdir -p "$certPath"
+    fi
+
+    # Issue certificate using Google Cloud DNS
+    LOGI "Issuing certificate using Certbot Google Cloud DNS..."
+    certbot certonly --dns-google --dns-google-credentials ${gcp_credentials} \
+        -d ${domain} -d *.${domain} --email ${email} --agree-tos --non-interactive
+
+    if [ $? -ne 0 ]; then
+        LOGE "Failed to issue certificate with Certbot Google DNS"
+        return 1
+    fi
+
+    # Copy certificates to our standard location
+    cp /etc/letsencrypt/live/${domain}/privkey.pem ${certPath}/privkey.pem
+    cp /etc/letsencrypt/live/${domain}/fullchain.pem ${certPath}/fullchain.pem
+
+    LOGI "Certificate issued successfully!"
+    LOGI "Certificate files are located at: ${certPath}"
+    LOGI "Wildcard certificate includes *.${domain}"
+
+    # Setup auto-renewal
+    if command -v systemctl &>/dev/null; then
+        systemctl enable certbot.timer 2>/dev/null || systemctl enable certbot-renew.timer 2>/dev/null
+        systemctl start certbot.timer 2>/dev/null || systemctl start certbot-renew.timer 2>/dev/null
+        LOGI "Certbot automatic renewal timer enabled"
+    fi
+}
+
+ssl_cert_issue_certbot_dns_digitalocean() {
+    install_dependencies
+
+    # Check for certbot
+    if ! command -v certbot &>/dev/null; then
+        LOGI "Certbot not found. Installing..."
+        install_certbot
+        if [ $? -ne 0 ]; then
+            LOGE "Failed to install Certbot"
+            return 1
+        fi
+    fi
+
+    # Install DigitalOcean DNS plugin
+    install_certbot_dns_plugins "digitalocean"
+
+    local domain=""
+    read -p "Please enter your domain name: " domain
+    LOGD "Your domain is: ${domain}"
+
+    local email=""
+    read -p "Please enter your email address: " email
+    LOGD "Your email is: ${email}"
+
+    local do_token=""
+    read -p "Please enter your DigitalOcean API Token: " do_token
+
+    # Create DigitalOcean credentials file
+    local creds_file="/root/.secrets/certbot/digitalocean.ini"
+    mkdir -p /root/.secrets/certbot
+    echo "dns_digitalocean_token = ${do_token}" > ${creds_file}
+    chmod 600 ${creds_file}
+
+    # Create certificate directory
+    certPath="/root/cert/${domain}"
+    if [ ! -d "$certPath" ]; then
+        mkdir -p "$certPath"
+    fi
+
+    # Issue certificate using DigitalOcean DNS
+    LOGI "Issuing certificate using Certbot DigitalOcean DNS..."
+    certbot certonly --dns-digitalocean --dns-digitalocean-credentials ${creds_file} \
+        -d ${domain} -d *.${domain} --email ${email} --agree-tos --non-interactive
+
+    if [ $? -ne 0 ]; then
+        LOGE "Failed to issue certificate with Certbot DigitalOcean DNS"
+        return 1
+    fi
+
+    # Copy certificates to our standard location
+    cp /etc/letsencrypt/live/${domain}/privkey.pem ${certPath}/privkey.pem
+    cp /etc/letsencrypt/live/${domain}/fullchain.pem ${certPath}/fullchain.pem
+
+    LOGI "Certificate issued successfully!"
+    LOGI "Certificate files are located at: ${certPath}"
+    LOGI "Wildcard certificate includes *.${domain}"
+
+    # Setup auto-renewal
+    if command -v systemctl &>/dev/null; then
+        systemctl enable certbot.timer 2>/dev/null || systemctl enable certbot-renew.timer 2>/dev/null
+        systemctl start certbot.timer 2>/dev/null || systemctl start certbot-renew.timer 2>/dev/null
+        LOGI "Certbot automatic renewal timer enabled"
+    fi
+}
+
 show_usage() {
     echo "SSL Certificate Management Script Usage:"
-    echo "------------------------------------------"
-    echo -e "COMMANDS:"
-    echo -e "$0                    - Interactive menu"
-    echo -e "$0 install            - Install dependencies"
-    echo -e "$0 issue              - Issue new SSL certificate"
-    echo -e "$0 cloudflare         - Issue SSL certificate via Cloudflare DNS"
-    echo -e "$0 revoke             - Revoke SSL certificate"
-    echo -e "$0 renew              - Force renew SSL certificate"
-    echo -e "$0 list               - List all certificates"
-    echo -e "$0 check              - Check auto-renewal status"
-    echo -e "$0 setup-renewal      - Setup automatic renewal"
-    echo "------------------------------------------"
+    echo "=========================================="
+    echo -e "GENERAL COMMANDS:"
+    echo -e "  $0                    - Interactive menu"
+    echo -e "  $0 install            - Install dependencies"
+    echo -e "  $0 list               - List all certificates"
+    echo -e "  $0 revoke             - Revoke SSL certificate"
+    echo -e "  $0 renew              - Force renew SSL certificate"
+    echo -e "  $0 check              - Check auto-renewal status"
+    echo -e "  $0 setup-renewal      - Setup automatic renewal"
+    echo ""
+    echo -e "ACME.SH METHODS:"
+    echo -e "  $0 acme-http          - Issue via acme.sh HTTP validation"
+    echo -e "  $0 acme-cloudflare    - Issue via acme.sh Cloudflare DNS"
+    echo -e "  $0 acme-route53       - Issue via acme.sh AWS Route53 DNS"
+    echo -e "  $0 acme-gcloud        - Issue via acme.sh Google Cloud DNS"
+    echo -e "  $0 acme-digitalocean  - Issue via acme.sh DigitalOcean DNS"
+    echo -e "  $0 acme-zerossl       - Issue via acme.sh with ZeroSSL CA"
+    echo ""
+    echo -e "CERTBOT METHODS:"
+    echo -e "  $0 certbot-standalone - Issue via Certbot standalone"
+    echo -e "  $0 certbot-webroot    - Issue via Certbot webroot"
+    echo -e "  $0 certbot-cf         - Issue via Certbot Cloudflare DNS"
+    echo -e "  $0 certbot-route53    - Issue via Certbot AWS Route53 DNS"
+    echo -e "  $0 certbot-gcloud     - Issue via Certbot Google Cloud DNS"
+    echo -e "  $0 certbot-do         - Issue via Certbot DigitalOcean DNS"
+    echo ""
+    echo -e "OTHER:"
+    echo -e "  $0 selfsigned         - Generate self-signed certificate"
+    echo "=========================================="
 }
 
 show_menu() {
     echo -e "
   ${green}SSL Certificate Management Script${plain}
-  ${green}0.${plain} Exit Script
-————————————————
-  ${green}1.${plain} Issue SSL Certificate (HTTP validation)
-  ${green}2.${plain} Issue SSL Certificate (Cloudflare DNS)
-  ${green}3.${plain} Revoke Certificate
-  ${green}4.${plain} Force Renew Certificate
-  ${green}5.${plain} List All Certificates
-————————————————
-  ${green}6.${plain} Install Dependencies
-  ${green}7.${plain} Setup Automatic Renewal
-  ${green}8.${plain} Check Auto-Renewal Status
+  ${green}0.${plain}  Exit Script
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ${yellow}ACME.SH Methods (Let's Encrypt/ZeroSSL)${plain}
+  ${green}1.${plain}  Issue via acme.sh (HTTP validation)
+  ${green}2.${plain}  Issue via acme.sh (Cloudflare DNS)
+  ${green}3.${plain}  Issue via acme.sh (AWS Route53 DNS)
+  ${green}4.${plain}  Issue via acme.sh (Google Cloud DNS)
+  ${green}5.${plain}  Issue via acme.sh (DigitalOcean DNS)
+  ${green}6.${plain}  Issue via acme.sh (ZeroSSL CA)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ${yellow}CERTBOT Methods${plain}
+  ${green}11.${plain} Issue via Certbot (Standalone)
+  ${green}12.${plain} Issue via Certbot (Webroot)
+  ${green}13.${plain} Issue via Certbot (Cloudflare DNS)
+  ${green}14.${plain} Issue via Certbot (AWS Route53 DNS)
+  ${green}15.${plain} Issue via Certbot (Google Cloud DNS)
+  ${green}16.${plain} Issue via Certbot (DigitalOcean DNS)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ${yellow}Certificate Management${plain}
+  ${green}21.${plain} Revoke Certificate
+  ${green}22.${plain} Force Renew Certificate
+  ${green}23.${plain} List All Certificates
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  ${yellow}Other Options${plain}
+  ${green}31.${plain} Generate Self-Signed Certificate
+  ${green}32.${plain} Install Dependencies
+  ${green}33.${plain} Setup Automatic Renewal
+  ${green}34.${plain} Check Auto-Renewal Status
 "
-    read -p "Please enter your selection [0-8]: " num
+    read -p "Please enter your selection: " num
 
     case "${num}" in
     0)
         exit 0
         ;;
+    # ACME.SH methods
     1)
         ssl_cert_issue
         ;;
@@ -475,25 +1257,61 @@ show_menu() {
         ssl_cert_issue_CF
         ;;
     3)
-        revoke_certificate
+        ssl_cert_issue_acme_route53
         ;;
     4)
-        force_renew_certificate
+        ssl_cert_issue_acme_gcloud
         ;;
     5)
-        list_certificates
+        ssl_cert_issue_acme_digitalocean
         ;;
     6)
+        ssl_cert_issue_acme_zerossl
+        ;;
+    # Certbot methods
+    11)
+        ssl_cert_issue_certbot_standalone
+        ;;
+    12)
+        ssl_cert_issue_certbot_webroot
+        ;;
+    13)
+        ssl_cert_issue_certbot_dns_cloudflare
+        ;;
+    14)
+        ssl_cert_issue_certbot_dns_route53
+        ;;
+    15)
+        ssl_cert_issue_certbot_dns_google
+        ;;
+    16)
+        ssl_cert_issue_certbot_dns_digitalocean
+        ;;
+    # Certificate management
+    21)
+        revoke_certificate
+        ;;
+    22)
+        force_renew_certificate
+        ;;
+    23)
+        list_certificates
+        ;;
+    # Other options
+    31)
+        ssl_cert_selfsigned
+        ;;
+    32)
         install_dependencies
         ;;
-    7)
+    33)
         setup_auto_renewal
         ;;
-    8)
+    34)
         check_auto_renewal
         ;;
     *)
-        LOGE "Please enter the correct number [0-8]"
+        LOGE "Please enter a valid option number"
         ;;
     esac
 }
@@ -501,14 +1319,12 @@ show_menu() {
 # Handle command line arguments
 if [[ $# -gt 0 ]]; then
     case $1 in
+    # General commands
     "install")
         install_dependencies
         ;;
-    "issue")
-        ssl_cert_issue
-        ;;
-    "cloudflare")
-        ssl_cert_issue_CF
+    "list")
+        list_certificates
         ;;
     "revoke")
         revoke_certificate
@@ -516,17 +1332,63 @@ if [[ $# -gt 0 ]]; then
     "renew")
         force_renew_certificate
         ;;
-    "list")
-        list_certificates
-        ;;
     "check")
         check_auto_renewal
         ;;
     "setup-renewal")
         setup_auto_renewal
         ;;
-    *) 
-        show_usage 
+    # ACME.SH methods
+    "acme-http")
+        ssl_cert_issue
+        ;;
+    "acme-cloudflare")
+        ssl_cert_issue_CF
+        ;;
+    "acme-route53")
+        ssl_cert_issue_acme_route53
+        ;;
+    "acme-gcloud")
+        ssl_cert_issue_acme_gcloud
+        ;;
+    "acme-digitalocean")
+        ssl_cert_issue_acme_digitalocean
+        ;;
+    "acme-zerossl")
+        ssl_cert_issue_acme_zerossl
+        ;;
+    # Certbot methods
+    "certbot-standalone")
+        ssl_cert_issue_certbot_standalone
+        ;;
+    "certbot-webroot")
+        ssl_cert_issue_certbot_webroot
+        ;;
+    "certbot-cf")
+        ssl_cert_issue_certbot_dns_cloudflare
+        ;;
+    "certbot-route53")
+        ssl_cert_issue_certbot_dns_route53
+        ;;
+    "certbot-gcloud")
+        ssl_cert_issue_certbot_dns_google
+        ;;
+    "certbot-do")
+        ssl_cert_issue_certbot_dns_digitalocean
+        ;;
+    # Other
+    "selfsigned")
+        ssl_cert_selfsigned
+        ;;
+    # Legacy aliases for backwards compatibility
+    "issue")
+        ssl_cert_issue
+        ;;
+    "cloudflare")
+        ssl_cert_issue_CF
+        ;;
+    *)
+        show_usage
         ;;
     esac
 else
