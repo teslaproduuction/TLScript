@@ -13,6 +13,27 @@
 
 ## [Unreleased]
 
+### Added
+- **Множественная поддержка DNS провайдеров** - Добавлена поддержка AWS Route53, Google Cloud DNS и DigitalOcean DNS валидации
+- **Интеграция Certbot** - Полная поддержка Certbot как альтернативы acme.sh со standalone и webroot методами
+- **Поддержка ZeroSSL** - Добавлен ZeroSSL как альтернативный центр сертификации через acme.sh
+- **Самоподписанные сертификаты** - Новая опция для генерации самоподписанных сертификатов для тестирования
+- **Улучшенная система меню** - Реорганизованное меню с 20+ методами выпуска сертификатов, сгруппированными по типу
+
+### Методы Certbot (Новые)
+- Certbot Standalone режим (валидация через порт 80)
+- Certbot Webroot режим (существующий веб-сервер)
+- Certbot с плагином Cloudflare DNS
+- Certbot с плагином AWS Route53 DNS
+- Certbot с плагином Google Cloud DNS
+- Certbot с плагином DigitalOcean DNS
+
+### Расширения ACME.SH (Новые)
+- AWS Route53 DNS валидация
+- Google Cloud DNS валидация
+- DigitalOcean DNS валидация
+- Интеграция ZeroSSL CA
+
 ## [1.0.0] - 2025-01-24
 
 ### Added
@@ -74,6 +95,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Added
+- **Multiple DNS Provider Support** - Added support for AWS Route53, Google Cloud DNS, and DigitalOcean DNS validation
+- **Certbot Integration** - Full Certbot support as alternative to acme.sh with standalone and webroot methods
+- **ZeroSSL Support** - Added ZeroSSL as alternative certificate authority via acme.sh
+- **Self-Signed Certificates** - New option to generate self-signed certificates for testing
+- **Enhanced Menu System** - Reorganized menu with 20+ certificate issuance methods grouped by type
+
+### Certbot Methods (New)
+- Certbot Standalone mode (port 80 validation)
+- Certbot Webroot mode (existing web server)
+- Certbot with Cloudflare DNS plugin
+- Certbot with AWS Route53 DNS plugin
+- Certbot with Google Cloud DNS plugin
+- Certbot with DigitalOcean DNS plugin
+
+### ACME.SH Extensions (New)
+- AWS Route53 DNS validation
+- Google Cloud DNS validation
+- DigitalOcean DNS validation
+- ZeroSSL CA integration
 
 ## [1.0.0] - 2025-01-24
 
