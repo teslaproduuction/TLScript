@@ -80,6 +80,34 @@ install_dependencies() {
 3. Проверьте совместимость с разными ОС
 4. Проверьте, что не сломались существующие функции
 
+### Локальное тестирование
+
+Запустите следующие тесты локально перед отправкой PR:
+
+```bash
+# Проверка синтаксиса Bash
+bash -n cert_manager.sh
+
+# ShellCheck анализ (требует установки shellcheck)
+sudo apt-get install shellcheck  # на Ubuntu/Debian
+shellcheck -S warning cert_manager.sh
+
+# Базовый функциональный тест
+echo "0" | sudo ./cert_manager.sh
+```
+
+### Автоматическое тестирование CI/CD
+
+При создании Pull Request автоматически запускаются следующие тесты:
+
+- **ShellCheck** - статический анализ кода Bash
+- **Синтаксис** - проверка корректности синтаксиса
+- **Безопасность** - сканирование на потенциальные уязвимости
+- **Мультиплатформенность** - тесты на Ubuntu, Debian, CentOS, Fedora, Arch, openSUSE
+- **Качество кода** - анализ стиля и лучших практик
+
+Все тесты должны пройти успешно перед слиянием PR.
+
 ## 📝 Документация
 
 - Обновляйте README.md при изменении функциональности
@@ -180,6 +208,34 @@ Before submitting PR:
 2. Ensure all functions work
 3. Check compatibility with different OS
 4. Verify existing functions aren't broken
+
+### Local Testing
+
+Run the following tests locally before submitting PR:
+
+```bash
+# Bash syntax check
+bash -n cert_manager.sh
+
+# ShellCheck analysis (requires shellcheck installation)
+sudo apt-get install shellcheck  # on Ubuntu/Debian
+shellcheck -S warning cert_manager.sh
+
+# Basic functional test
+echo "0" | sudo ./cert_manager.sh
+```
+
+### Automated CI/CD Testing
+
+When creating a Pull Request, the following tests run automatically:
+
+- **ShellCheck** - static analysis of Bash code
+- **Syntax** - validation of script syntax
+- **Security** - scanning for potential vulnerabilities
+- **Multi-platform** - tests on Ubuntu, Debian, CentOS, Fedora, Arch, openSUSE
+- **Code Quality** - analysis of style and best practices
+
+All tests must pass successfully before PR can be merged.
 
 ## 📝 Documentation
 
